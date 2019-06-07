@@ -92,20 +92,20 @@ class AutoEncoderNet:
         self.output = heads['part_pred']
         self.mask = batch[Batch.masks]
 
-        self.partial_loss = tf.multiply(batch[Batch.masks], tf.subtract(heads['part_pred'], batch[Batch.targets]))
+        self.partial_loss = tf.multiply(batch[Batch.masks], tf.subtract(tf.divide(heads['part_pred'], 255), tf.divide(batch[Batch.targets], 255)))
 
 
         def mean_squared_loss(pred_layer):
-            return tf.reduce_mean(tf.square(tf.subtract(heads[pred_layer], batch[Batch.targets])))
+            return tf.reduce_mean(tf.square(tf.subtract(tf.divide(heads[pred_layer], 255), tf.divide(batch[Batch.targets], 255))))
 
 
         def l2_loss(pred_layer):
-            #res = tf.multiply(batch[Batch.masks], tf.subtract(tf.divide(heads[pred_layer], 255), tf.divide(batch[Batch.targets], 255)))
+            res = tf.multiply(batch[Batch.masks], tf.subtract(tf.divide(heads[pred_layer], 255), tf.divide(batch[Batch.targets], 255)))
             #res = tf.Print(res, [tf.is_nan(res)], message="my Z-values:")  #
             #res_reshape = tf.reshape(res, shape=[1, -1])
             #return tf.reduce_mean(tf.square(res))
-            return tf.norm(tf.multiply(batch[Batch.masks], tf.subtract(batch[Batch.targets], heads[pred_layer])))
+            return tf.norm(tf.multiply(batch[Batch.masks], tf.subtract(tf.divide(heads[pred_layer], 255), tf.divide(batch[Batch.targets], 255))))
 
         loss = {}
-        loss['total_loss'] = l2_loss('part_pred')
+        loss['total_loss'] = mean_squared_loss('part_pred')
         return loss

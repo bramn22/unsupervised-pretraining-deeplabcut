@@ -463,7 +463,7 @@ def create_training_dataset(config,num_shuffles=1,Shuffles=None,windows2linux=Fa
 
     bodyparts = cfg['bodyparts']
     TrainingFraction = cfg['TrainingFraction']
-    validFraction = 0.25  #TODO::move to config file
+    validFraction = 0.1  #TODO::move to config file
     for shuffle in Shuffles: # Creating shuffles starting from 1
         for trainFraction in TrainingFraction:
             trainIndexes, validIndexes, testIndexes = SplitTrials(range(len(Data.index)), trainFraction, validFraction)
@@ -1031,7 +1031,7 @@ def create_training_dataset(config,num_shuffles=1,Shuffles=None,windows2linux=Fa
 
     bodyparts = cfg['bodyparts']
     TrainingFraction = cfg['TrainingFraction']
-    validFraction = 0.10 # TODO::move to config file!
+    validFraction = 0.125 # TODO::move to config file!
     for shuffle in Shuffles: # Creating shuffles starting from 1
         for trainFraction in TrainingFraction:
             trainIndexes, validIndexes, testIndexes = SplitTrials(range(len(Data.index)), trainFraction=trainFraction, validFraction=validFraction)

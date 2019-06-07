@@ -40,7 +40,6 @@ def get_batch_spec(cfg):
 
 class PoseNet:
     def __init__(self, cfg):
-        print("Modified PoseNet Chosen")
         self.cfg = cfg
 
     def extract_features(self, inputs):
@@ -64,6 +63,32 @@ class PoseNet:
 
         return net,end_points
 
+    def get_chAT_mask(self, shape, num_joints=None, locref=False):
+        if locref:
+            # side = shape[2] // 2 - 1
+            # print('shape: ', shape)
+            # left_dx = tf.zeros((shape[0], shape[1], side, 0))
+            # middle_dx = tf.ones((shape[0], shape[1], 1, 0))
+            # right_dx = tf.zeros((shape[0], shape[1], side + 1, 0))
+            # mask_dx = tf.concat((left_dx, middle_dx, right_dx), axis=2)
+            mask_dx = tf.zeros((shape[0], shape[1], shape[2], 1))
+            mask_dy = tf.ones((shape[0], shape[1], shape[2], 1))
+            mask = tf.concat((mask_dx, mask_dy), axis=3)
+            for i in range(1, num_joints):
+                mask_dx = tf.zeros((shape[0], shape[1], shape[2], 1))
+                mask_dy = tf.ones((shape[0], shape[1], shape[2], 1))
+                mask = tf.concat((mask, mask_dx, mask_dy), axis=3)
+
+            return mask
+
+        side = shape[2] // 2 - 1
+        print('shape: ', shape)
+        left = tf.zeros((shape[0], shape[1], side, shape[3]))
+        middle = tf.ones((shape[0], shape[1], 1, shape[3]))
+        right = tf.zeros((shape[0], shape[1], side+1, shape[3]))
+        mask = tf.concat((left, middle, right), axis=2)
+        return mask
+
     def prediction_layers(self, features, end_points, reuse=tf.AUTO_REUSE): #TODO: check reuse
         cfg = self.cfg
 
@@ -74,9 +99,14 @@ class PoseNet:
         with tf.variable_scope('pose', reuse=reuse):
             out['part_pred'] = prediction_layer(cfg, features, 'part_pred',
                                                 cfg.num_joints)
+            # TODO:: only when using chAT mode
+            out['part_pred'] = tf.multiply(out['part_pred'], self.get_chAT_mask(tf.shape(out['part_pred'])))
+
             if cfg.location_refinement:
                 out['locref'] = prediction_layer(cfg, features, 'locref_pred',
                                                  cfg.num_joints * 2)
+                out['locref'] = tf.multiply(out['locref'], self.get_chAT_mask(tf.shape(out['locref']), cfg.num_joints, locref=True))
+
             if cfg.intermediate_supervision:
                 interm_name = layer_name.format(3, cfg.intermediate_supervision_layer)
                 block_interm_out = end_points[interm_name]
@@ -93,12 +123,21 @@ class PoseNet:
     def test(self, inputs):
         heads = self.get_net(inputs)
         prob = tf.sigmoid(heads['part_pred'])
+        prob = tf.multiply(prob, self.get_chAT_mask(tf.shape(prob)))
+
         return {'part_prob': prob, 'locref': heads['locref']}
 
     def train(self, batch):
         cfg = self.cfg
 
         heads = self.get_net(batch[Batch.inputs])
+
+        try:
+            print('chAT mode', cfg['chAT'])
+            if cfg['chAT']:
+                return self.calc_loss_chAT(cfg, heads, batch)
+        except KeyError:
+            print('chAT mode off')
 
         weigh_part_predictions = cfg.weigh_part_predictions
         part_score_weights = batch[Batch.part_score_weights] if weigh_part_predictions else 1.0
@@ -125,5 +164,60 @@ class PoseNet:
             total_loss = total_loss + loss['locref_loss']
 
         # loss['total_loss'] = slim.losses.get_total_loss(add_regularization_losses=params.regularize)
+        loss['total_loss'] = total_loss
+        return loss
+
+
+    def calc_loss_chAT(self, cfg, heads, batch):
+        import numpy as np
+        weigh_part_predictions = cfg.weigh_part_predictions
+        part_score_weights = batch[Batch.part_score_weights] if weigh_part_predictions else 1.0
+        def add_part_loss(pred_layer):
+            shape = tf.shape(heads[pred_layer])
+            side = shape[2]//2 - 1
+            print('shape: ', shape)
+            left = tf.zeros((shape[0], shape[1], side, shape[3]))
+            middle = tf.ones((shape[0], shape[1], 1, shape[3]))
+            right = tf.zeros((shape[0], shape[1], side+1, shape[3]))
+            mask = tf.concat((left, middle, right), axis=2)
+            #mask[:, :, shape[2]//2] = tf.ones((shape[0], 1, shape[1]))
+            return tf.losses.sigmoid_cross_entropy(batch[Batch.part_score_targets],
+                                                   heads[pred_layer],
+                                                   np.multiply(part_score_weights, mask))
+
+        loss = {}
+        loss['part_loss'] = add_part_loss('part_pred')
+        total_loss = loss['part_loss']
+        if cfg.intermediate_supervision:
+            loss['part_loss_interm'] = add_part_loss('part_pred_interm')
+            total_loss = total_loss + loss['part_loss_interm']
+
+        if cfg.location_refinement:
+            locref_pred = heads['locref']
+            locref_targets = batch[Batch.locref_targets]
+            locref_weights = batch[Batch.locref_mask]
+            # shape = tf.shape(locref_pred)
+            # side = shape[2] // 2 - 1
+            # print('shape: ', shape)
+            # left = tf.zeros((shape[0], shape[1], side, shape[3]))
+            # middle = tf.ones((shape[0], shape[1], 1, shape[3]))
+            # right = tf.zeros((shape[0], shape[1], side + 1, shape[3]))
+            # mask = tf.concat((left, middle, right), axis=2)
+            # locref_weights = np.multiply(locref_weights, mask)
+
+            loss_func = losses.huber_loss if cfg.locref_huber_loss else tf.losses.mean_squared_error
+            loss['locref_loss'] = cfg.locref_loss_weight * loss_func(locref_targets, locref_pred, locref_weights)
+            total_loss = total_loss + loss['locref_loss']
+
+        self._inp = batch[Batch.inputs]
+        self._outp = heads['part_pred']
+        self._outp_locref = heads['locref']
+        self._targ = batch[Batch.part_score_targets]
+        self._targ_locref = batch[Batch.locref_targets]
+        self._mask_locref = batch[Batch.locref_mask]
+        # loss['total_loss'] = slim.losses.get_total_loss(add_regularization_losses=params.regularize)
+        #total_loss = tf.Print(total_loss, [loss['part_loss']])
+
+
         loss['total_loss'] = total_loss
         return loss

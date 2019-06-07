@@ -41,7 +41,7 @@ class UnsupDataset:
         self.set_shuffle(cfg.shuffle)
 
     def get_ref_image(self):
-        return imread(os.path.join(self.cfg.project_path, self.data[0].im_path), mode='RGB')
+        return imread(os.path.join(self.cfg.project_path, 'pretrain/training-datasets', self.data[0].im_path), mode='RGB')
 
     def load_dataset(self):
         cfg = self.cfg
@@ -153,40 +153,39 @@ class UnsupDataset:
 
         # print(im_file, os.getcwd())
         # print(self.cfg.project_path)
-        image = imread(os.path.join(self.cfg.project_path, im_file), mode='RGB')
+        image = imread(os.path.join(self.cfg.project_path, 'pretrain/training-datasets', im_file), mode='RGB')
         img = imresize(image, scale) if scale != 1 else image #np.shape -> rows, cols, depth
         scaled_img_size = arr(img.shape[0:2])
         stride = self.cfg.stride
         size = np.ceil(scaled_img_size / (stride * 2)).astype(int) * 2
         # scmap = np.zeros(cat([size, 3]))
         #ref_image = imread(os.path.join(self.cfg.project_path, 'pretrain/training-datasets', self.ref_image), mode='RGB') # TODO: only read once!
-        # ref = imresize(self.ref_image, scale) if scale != 1 else self.ref_image #np.shape -> rows, cols, depth
+        ref = imresize(self.ref_image, scale) if scale != 1 else self.ref_image #np.shape -> rows, cols, depth
 
-        # target = imresize(cv2.subtract(ref, img), size)
-        target = np.divide(imresize(img, size), 255)
+        target = imresize(cv2.subtract(ref, img), size)
         if mirror:
             target = np.fliplr(img)
         # add noise
-        # noise = np.random.choice([0, 1], size=(img.shape[0], img.shape[1]), p=[2. / 4, 2. / 4])
-        # stacked_noise = np.stack((noise, noise, noise), axis=2)
-        # img = np.multiply(img, stacked_noise)
-        rows, cols, depth = np.shape(img)
-        min_width = cols // 8
-        min_height = rows // 8
-        max_width = cols // 2
-        max_height = rows //2
-        y1 = random.randint(0, rows - min_height - 1) # -1 because end is inclusive
-        x1 = random.randint(0, cols - min_width - 1)
-        y2 = y1 + random.randint(min_height, min(max_height, rows - y1) - 1)
-        x2 = x1 + random.randint(min_width, min(max_width, cols - x1) - 1)
-        mask = np.zeros(img.shape, dtype="uint8")
-        mask = cv2.rectangle(mask, (x1, y1), (x2, y2), (1, 1, 1), cv2.FILLED) #(x, y)
-        mask = imresize(mask, size)
-
-        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 0), cv2.FILLED) #(x, y)
-
-        batch = {Batch.inputs: img, Batch.targets: target, Batch.masks: mask}
-        # batch = {Batch.inputs: img, Batch.targets: target, Batch.masks: ref}
+        noise = np.random.choice([0, 1], size=(img.shape[0], img.shape[1]), p=[1. / 4, 3. / 4])
+        stacked_noise = np.stack((noise, noise, noise), axis=2)
+        img = np.multiply(img, stacked_noise)
+        # rows, cols, depth = np.shape(img)
+        # min_width = 100
+        # min_height = 100
+        # max_width = 400
+        # max_height = 400
+        # y1 = random.randint(0, rows - min_height - 1) # -1 because end is inclusive
+        # x1 = random.randint(0, cols - min_width - 1)
+        # y2 = y1 + random.randint(min_height, min(max_height, rows - y1) - 1)
+        # x2 = x1 + random.randint(min_width, min(max_width, cols - y1) - 1)
+        # mask = np.zeros(img.shape, dtype="uint8")
+        # mask = cv2.rectangle(mask, (x1, y1), (x2, y2), (1, 1, 1), cv2.FILLED) #(x, y)
+        # mask = imresize(mask, size)
+        #
+        # cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 0), cv2.FILLED) #(x, y)
+        #
+        # batch = {Batch.inputs: img, Batch.targets: target, Batch.masks: mask}
+        batch = {Batch.inputs: img, Batch.targets: target, Batch.masks: ref}
         batch = {key: data_to_input(data) for (key, data) in batch.items()}
 
         batch[Batch.data_item] = data_item

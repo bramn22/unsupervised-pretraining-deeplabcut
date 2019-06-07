@@ -68,11 +68,12 @@ def evaluate_network(config,Shuffles=[1],plotting = None,show_errors = True,comp
     from skimage import io
     import skimage.color
 
-    from deeplabcut.pose_estimation_tensorflow.nnet import predict as ptf_predict
+    # from deeplabcut.pose_estimation_tensorflow.nnet import predict as ptf_predict
     from deeplabcut.pose_estimation_tensorflow.config import load_config
     from deeplabcut.pose_estimation_tensorflow.dataset.pose_dataset import data_to_input
     from deeplabcut.utils import visualization
     from modified import auxiliaryfunctions
+    from modified import predict as ptf_predict
     import tensorflow as tf
     
     if 'TF_CUDNN_USE_AUTOTUNE' in os.environ:
@@ -185,7 +186,7 @@ def evaluate_network(config,Shuffles=[1],plotting = None,show_errors = True,comp
 
                     print("Done and results stored for snapshot: ", Snapshots[snapindex])
                     DataCombined = pd.concat([Data.T, DataMachine.T], axis=0).T
-                    DataCombined.iloc[testIndices].to_hdf(os.path.join(str(evaluationfolder),DLCscorer + '-' + Snapshots[snapindex]+ '-Datacombined' + '.h5'), 'df_with_missing',format='table',mode='w')
+                    DataCombined.iloc[testIndices].to_hdf(os.path.join(str(evaluationfolder),DLCscorer+'-'+Snapshots[snapindex]+'-Datacombined.h5'), 'df_with_missing',format='table',mode='w')
                     RMSE,RMSEpcutoff = pairwisedistances(DataCombined, cfg["scorer"], DLCscorer,cfg["pcutoff"],comparisonbodyparts)
                     testerror = np.nanmean(RMSE.iloc[testIndices].values.flatten())
                     trainerror = np.nanmean(RMSE.iloc[trainIndices].values.flatten())

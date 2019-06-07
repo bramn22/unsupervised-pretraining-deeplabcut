@@ -19,7 +19,6 @@ from deeplabcut.pose_estimation_tensorflow.util.logging import setup_logging
 from pretraining.autoencoder_net import AutoEncoderNet
 from pretraining.autoencoder_dataset import UnsupDataset
 
-
 class LearningRate(object):
     def __init__(self, cfg):
         self.steps = cfg.multi_step
@@ -116,12 +115,7 @@ def train(config_yaml, displayiters, saveiters, maxiters, max_to_keep=5):
     sess.run(tf.local_variables_initializer())
 
     # Restore variables from disk.
-    if cfg.init_weights == 'He':
-        # Default in ResNet
-        print("Random weight initalization using He.")
-    else:
-        print("Pretrained weight initalization.")
-        restorer.restore(sess, cfg.init_weights)
+    restorer.restore(sess, cfg.init_weights)
     if maxiters == None:
         max_iter = int(cfg.multi_step[-1][1])
     else:
@@ -141,7 +135,6 @@ def train(config_yaml, displayiters, saveiters, maxiters, max_to_keep=5):
     else:
         save_iters = max(1, int(saveiters))
         print("Save_iters overwritten as", save_iters)
-
 
     cum_loss = 0.0
     lr_gen = LearningRate(cfg)
@@ -171,10 +164,10 @@ def train(config_yaml, displayiters, saveiters, maxiters, max_to_keep=5):
             lrf.write("{}, {:.5f}, {}\n".format(it, average_loss, current_lr))
             lrf.flush()
             fig, axs = plt.subplots(2, 2)
-            axs[0][0].imshow(_inp[0, :, :, :] / 255)
-            axs[0][1].imshow(np.clip(_outp[0, :, :, :], 0, 1))
-            axs[1][0].imshow(_targ[0, :, :, :])
-            axs[1][1].imshow(_mask[0, :, :, :])
+            axs[0][0].imshow(_inp[0, :, :, 1] / 255)
+            axs[0][1].imshow(_outp[0, :, :, 1] / 255)
+            axs[1][0].imshow(_targ[0, :, :, 1] / 255)
+            axs[1][1].imshow(_mask[0, :, :, 1])
             plt.savefig(str('imgs/pretrain_iter'+str(it)+'.png'), bbox_inches='tight')
             plt.close()
 

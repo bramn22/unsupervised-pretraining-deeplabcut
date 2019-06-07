@@ -17,54 +17,16 @@ from deeplabcut.pose_estimation_tensorflow.nnet.pose_net import get_batch_spec
 from deeplabcut.pose_estimation_tensorflow.util.logging import setup_logging
 from modified.validator import Validator
 from modified import pose_net
+from matplotlib import pyplot as plt
+import numpy as np
 
-def disp_images(imgs, txts=None, cols=10, title='', cmap=None):
-    from matplotlib import pyplot as plt
-    if txts is None:
-        txts = ['']*len(imgs)
-    if len(imgs) <= cols:
-        f, axarr = plt.subplots(1, len(imgs), figsize=(15, 15), dpi=200, sharex='all')
-        for i, (img, txt) in enumerate(zip(imgs, txts)):
-            axarr[i % cols].imshow(img, cmap=cmap)
-            axarr[i % cols].axis('off')
-            axarr[i % cols].set_title(txt)
-        f.suptitle(title, fontsize=16)
-        plt.show()
-    else:
-        f, axarr = plt.subplots(len(imgs) // cols, cols, figsize=(15, 15), dpi=200, sharex='all')
-        for i, (img, txt) in enumerate(zip(imgs, txts)):
-            axarr[i // cols][i % cols].imshow(img, cmap=cmap)
-            axarr[i // cols][i % cols].axis('off')
-            axarr[i // cols][i % cols].set_title(txt)
-        f.suptitle(title, fontsize=16)
-        plt.show()
-
-def disp_heatmap(imgs, txts=None, cols=10, title='', cmap=None):
-    from matplotlib import pyplot as plt
-    import seaborn as sns
-    if txts is None:
-        txts = [''] * len(imgs)
-    if len(imgs) <= cols:
-        f, axarr = plt.subplots(1, len(imgs), figsize=(15, 15), dpi=200, sharex='all')
-        for i, (img, txt) in enumerate(zip(imgs, txts)):
-            sns.heatmap(img, cmap='RdBu_r', ax=axarr[i%cols], cbar=False, center=0)
-            #axarr[i % cols].imshow(img, cmap='hot', interpolation='nearest')
-            axarr[i % cols].axis('off')
-            axarr[i % cols].set_title(txt)
-        # f.suptitle(title, fontsize=16)
-        # plt.show()
-    else:
-        f, axarr = plt.subplots(len(imgs) // cols, cols, figsize=(15, 15), dpi=200, sharex='all')
-        for i, (img, txt) in enumerate(zip(imgs, txts)):
-            sns.heatmap(img, cmap='RdBu_r', ax=axarr[i // cols][i % cols], cbar=False, center=0)
-
-            #axarr[i // cols][i % cols].imshow(img, cmap='hot', interpolation='nearest')
-            axarr[i // cols][i % cols].axis('off')
-            axarr[i // cols][i % cols].set_title(txt)
-        # f.suptitle(title, fontsize=16)
-        # plt.show()
-    plt.savefig('heatmap_{}.png'.format(title), bbox_inches='tight', pad_inches=0)
-
+def save_img_gray(img, name):
+    img = plt.imshow(img, cmap='gray')
+    plt.axis('off')
+    img.axes.get_xaxis().set_visible(False)
+    img.axes.get_yaxis().set_visible(False)
+    plt.savefig(name, bbox_inches='tight', pad_inches=0)
+    plt.close()
 
 class LearningRate(object):
     def __init__(self, cfg):
@@ -141,7 +103,8 @@ def train(cfg, pose_config_yaml,displayiters,saveiters,maxiters,max_to_keep=5):
     dataset = create_dataset(pose_cfg)
     batch_spec = get_batch_spec(pose_cfg)
     batch, enqueue_op, placeholders = setup_preloading(batch_spec)
-    losses = (pose_net.PoseNet(pose_cfg)).train(batch)
+    pose = pose_net.PoseNet(pose_cfg)
+    losses = pose.train(batch)
     total_loss = losses['total_loss']
 
     for k, t in losses.items():
@@ -161,12 +124,7 @@ def train(cfg, pose_config_yaml,displayiters,saveiters,maxiters,max_to_keep=5):
     sess.run(tf.local_variables_initializer())
 
     # Restore variables from disk.
-    if pose_cfg.init_weights == 'He':
-        # Default in ResNet
-        print("Random weight initalization using He.")
-    else:
-        print("Pretrained weight initalization.")
-        restorer.restore(sess, pose_cfg.init_weights)
+    restorer.restore(sess, pose_cfg.init_weights)
     if maxiters==None:
         max_iter = int(pose_cfg.multi_step[-1][1])
     else:
@@ -186,19 +144,7 @@ def train(cfg, pose_config_yaml,displayiters,saveiters,maxiters,max_to_keep=5):
     else:
         save_iters=max(1,int(saveiters))
         print("Save_iters overwritten as",save_iters)
-
-
-    # Visualize first layer
-    # import numpy as np
-    # from skimage import color
-    # vars = tf.trainable_variables()
-    # print(vars)
-    # vars_vals = sess.run(vars[0])
-    # vars_vals = np.moveaxis(vars_vals, -1, 0)
-    # #vars_vals = (vars_vals - np.amin(vars_vals)) / (np.amax(vars_vals) - np.amin(vars_vals))
-    # vars_vals = color.rgb2gray(vars_vals)
-    # disp_heatmap(vars_vals, cols=8, title='context2_pe300')
-
+        
     cum_loss = 0.0
     lr_gen = LearningRate(pose_cfg)
     validerror_min = float('inf')
@@ -206,13 +152,19 @@ def train(cfg, pose_config_yaml,displayiters,saveiters,maxiters,max_to_keep=5):
 
     stats_path = Path(pose_config_yaml).with_name('learning_stats.csv')
     lrf = open(str(stats_path), 'w')
-
+    imgs_path = Path(pose_config_yaml).parents[0] / 'imgs'
+    try:
+        imgs_path.mkdir(parents=True)
+    except:
+        pass
+    from skimage import color
     print("Training parameter:")
     print(pose_cfg)
     print("Starting training....")
     for it in range(max_iter+1):
         current_lr = lr_gen.get_lr(it)
-        [_, loss_val, summary] = sess.run([train_op, total_loss, merged_summaries],
+        [_, loss_val, summary, _inp, _outp, _targ] = sess.run([train_op, total_loss, merged_summaries,
+                                           pose._inp, pose._outp, pose._targ],
                                           feed_dict={learning_rate: current_lr})
         cum_loss += loss_val
         train_writer.add_summary(summary, it)
@@ -224,6 +176,12 @@ def train(cfg, pose_config_yaml,displayiters,saveiters,maxiters,max_to_keep=5):
                          .format(it, "{0:.4f}".format(average_loss), current_lr))
             lrf.write("{}, {:.5f}, {}\n".format(it, average_loss, current_lr))
             lrf.flush()
+
+            save_img_gray(_inp[0, :, :, :] / 255, str('imgs/input' + str(it) + '.png'))
+            save_img_gray(_targ[0, :, :, 0], str('imgs/target' + str(it) + '.png'))
+            # save_img_gray(_targ_locref[0, :, :, 0], str('imgs/locref_x' + str(it) + '.png'))
+            # save_img_gray(_targ_locref[0, :, :, 1], str('imgs/locref_y' + str(it) + '.png'))
+            save_img_gray(_outp[0, :, :, 0], str('imgs/chat_predict' + str(it) + '.png'))
 
         # Save snapshot
         if (it % save_iters == 0 and it != 0) or it == max_iter:

@@ -456,28 +456,25 @@ def create_training_dataset(config,num_shuffles=1,Shuffles=None,windows2linux=Fa
         Shuffles=range(1,num_shuffles+1,1)
     else:
         Shuffles=[i for i in Shuffles if isinstance(i,int)]
-    #images = []
-    num_images = 0
+    images = []
+    #for video in cfg['video_sets']:
+    imgs_path = os.path.join(project_path, 'pretrain/training-datasets')#, Path(video).stem)
+    images += [img for img in os.listdir(imgs_path) if img.endswith(".png")]
     data = []
+    for image in images:
+        H = {}
+        im = io.imread(os.path.join(imgs_path, image))
+        H['image'] = image
 
-    for video in cfg['video_sets']:
-        imgs_path = os.path.join(project_path, 'pretrain/training-datasets', Path(video).stem)
-        images = [img for img in os.listdir(imgs_path) if img.endswith(".png")]
-        num_images += len(images)
-        for image in images:
-            H = {}
-            im = io.imread(os.path.join(imgs_path, image))
-            H['image'] = os.path.join('pretrain/training-datasets', Path(video).stem, image)
-
-            if np.ndim(im) == 3:
-                H['size'] = np.array(
-                    [np.shape(im)[2],
-                     np.shape(im)[0],
-                     np.shape(im)[1]])
-            else:
-                # print "Grayscale!"
-                H['size'] = np.array([1, np.shape(im)[0], np.shape(im)[1]])
-            data.append(H)
+        if np.ndim(im) == 3:
+            H['size'] = np.array(
+                [np.shape(im)[2],
+                 np.shape(im)[0],
+                 np.shape(im)[1]])
+        else:
+            # print "Grayscale!"
+            H['size'] = np.array([1, np.shape(im)[0], np.shape(im)[1]])
+        data.append(H)
         ################################################################################
         # Saving data file (convert to training file for deeper cut (*.mat))
         ################################################################################
@@ -485,7 +482,7 @@ def create_training_dataset(config,num_shuffles=1,Shuffles=None,windows2linux=Fa
     data_path = os.path.join(project_path, 'pretrain/training-datasets')
     datafilename, metadatafilename = auxiliaryfunctions.GetDataandMetaDataFilenames(data_path, trainFraction,
                                                                                     Shuffles[0], cfg)
-    trainIndexes, testIndexes = SplitTrials(range(num_images), trainFraction)
+    trainIndexes, testIndexes = SplitTrials(range(len(images)), trainFraction)
     auxiliaryfunctions.SaveMetadata(metadatafilename, data, trainIndexes, testIndexes,
                                     trainFraction)
     DTYPE = [('image', 'O'), ('size', 'O')]

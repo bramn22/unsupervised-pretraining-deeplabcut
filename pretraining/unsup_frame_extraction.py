@@ -229,7 +229,7 @@ def extract_frames(config, algo='uniform', crop=False, checkcropping=False, user
                 else:
                     frames2pick = range(0, numframes2pick) # math.ceil(clip.duration * clip.fps * stop)
 
-            output_path = Path(config).parents[0] / 'pretrain' / 'training-datasets' / Path(video).stem
+            output_path = Path(config).parents[0] / 'pretrain' / 'training-datasets' #/ Path(video).stem
             if opencv:
                 for index in frames2pick:
                     cap.set(1, index)  # extract a particular frame
